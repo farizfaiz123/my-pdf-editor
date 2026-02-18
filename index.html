@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Editor Pro</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Paste the React code logic here
+        const { useState, useRef, useEffect } = React;
+
+        function App() {
+            // ... (Full Logic from previous response adapted for standalone)
+            return (
+                <div className="flex flex-col h-screen bg-slate-100">
+                    <header className="bg-white p-4 border-b flex justify-between items-center shadow-sm">
+                        <h1 className="font-bold text-red-600">PDF Editor Mobile</h1>
+                        <input type="file" id="pdf-upload" className="hidden" accept="application/pdf" />
+                        <button onClick={() => document.getElementById('pdf-upload').click()} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm">Buka PDF</button>
+                    </header>
+                    <main className="flex-1 flex flex-col items-center justify-center p-4">
+                        <div className="bg-white shadow-xl rounded-lg p-10 text-center border-2 border-dashed border-slate-300">
+                           <p className="text-slate-500">Upload PDF untuk mulai mengedit di HP Anda.</p>
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
