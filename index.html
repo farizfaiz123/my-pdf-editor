@@ -3,45 +3,532 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Editor Pro</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <title>PDF Studio Lite - Edit & Annotate</title>
+    <!-- Tailwind CSS for modern UI -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF.js for rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- PDF-Lib for saving/modifying -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
-
-    <script type="text/babel">
-        // Paste the React code logic here
-        const { useState, useRef, useEffect } = React;
-
-        function App() {
-            // ... (Full Logic from previous response adapted for standalone)
-            return (
-                <div className="flex flex-col h-screen bg-slate-100">
-                    <header className="bg-white p-4 border-b flex justify-between items-center shadow-sm">
-                        <h1 className="font-bold text-red-600">PDF Editor Mobile</h1>
-                        <input type="file" id="pdf-upload" className="hidden" accept="application/pdf" />
-                        <button onClick={() => document.getElementById('pdf-upload').click()} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm">Buka PDF</button>
-                    </header>
-                    <main className="flex-1 flex flex-col items-center justify-center p-4">
-                        <div className="bg-white shadow-xl rounded-lg p-10 text-center border-2 border-dashed border-slate-300">
-                           <p className="text-slate-500">Upload PDF untuk mulai mengedit di HP Anda.</p>
-                        </div>
-                    </main>
-                </div>
-            );
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        .canvas-container {
+            position: relative;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+            background: white;
+        }
+
+        .annotation-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+
+        .annotation-layer canvas {
+            pointer-events: auto;
+        }
+
+        #drop-zone.drag-over {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+
+        .tool-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between z-10">
+        <div class="flex items-center gap-3">
+            <div class="bg-red-500 p-2 rounded-lg">
+                <i data-lucide="file-text" class="text-white w-6 h-6"></i>
+            </div>
+            <h1 class="text-xl font-bold text-gray-800">PDF Studio <span class="text-blue-600">Lite</span></h1>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <button id="upload-btn" class="flex items-center gap-2 bg-white border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all">
+                <i data-lucide="upload" class="w-4 h-4"></i> Open PDF
+            </button>
+            <button id="download-btn" disabled class="flex items-center gap-2 bg-blue-600 px-4 py-2 rounded-lg text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm">
+                <i data-lucide="download" class="w-4 h-4"></i> Export PDF
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex overflow-hidden">
+        
+        <!-- Toolbar (Left) -->
+        <aside class="w-20 bg-white border-r border-gray-200 flex flex-col items-center py-6 gap-6">
+            <div class="flex flex-col gap-4">
+                <button title="Select/Move" class="tool-btn active p-3 rounded-xl hover:bg-gray-100 transition-colors" data-tool="select">
+                    <i data-lucide="mouse-pointer-2"></i>
+                </button>
+                <button title="Add Text" class="tool-btn p-3 rounded-xl hover:bg-gray-100 transition-colors" data-tool="text">
+                    <i data-lucide="type"></i>
+                </button>
+                <button title="Freehand Draw" class="tool-btn p-3 rounded-xl hover:bg-gray-100 transition-colors" data-tool="draw">
+                    <i data-lucide="pencil"></i>
+                </button>
+                <button title="Add Rectangle" class="tool-btn p-3 rounded-xl hover:bg-gray-100 transition-colors" data-tool="rect">
+                    <i data-lucide="square"></i>
+                </button>
+                <button title="Signature" class="tool-btn p-3 rounded-xl hover:bg-gray-100 transition-colors" data-tool="sign">
+                    <i data-lucide="pen-tool"></i>
+                </button>
+            </div>
+            
+            <div class="mt-auto flex flex-col gap-4 border-t pt-6">
+                <div class="flex flex-col items-center gap-2">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase">Color</label>
+                    <input type="color" id="color-picker" value="#3b82f6" class="w-8 h-8 rounded cursor-pointer border-none bg-transparent">
+                </div>
+                <button id="clear-page" title="Clear Page" class="p-3 rounded-xl text-red-500 hover:bg-red-50 transition-colors">
+                    <i data-lucide="trash-2"></i>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Editor Viewport -->
+        <div id="viewport" class="flex-1 overflow-auto bg-gray-100 p-8 flex flex-col items-center">
+            
+            <!-- Empty State / Dropzone -->
+            <div id="drop-zone" class="w-full max-w-2xl h-96 border-4 border-dashed border-gray-300 rounded-3xl flex flex-col items-center justify-center bg-white text-gray-500 cursor-pointer transition-all">
+                <div class="bg-blue-50 p-6 rounded-full mb-4">
+                    <i data-lucide="file-plus" class="w-12 h-12 text-blue-500"></i>
+                </div>
+                <h2 class="text-xl font-semibold text-gray-800">Upload a PDF to start editing</h2>
+                <p class="mt-2">Drag and drop or click the button above</p>
+                <input type="file" id="file-input" accept="application/pdf" class="hidden">
+            </div>
+
+            <!-- PDF Page Container (Dynamic) -->
+            <div id="pdf-pages-container" class="hidden w-full flex flex-col items-center gap-8"></div>
+        </div>
+
+        <!-- Properties Panel (Right) -->
+        <aside id="properties-panel" class="w-64 bg-white border-l border-gray-200 p-6 hidden">
+            <h3 class="font-bold text-gray-800 mb-6 border-b pb-2">Properties</h3>
+            
+            <div id="text-properties" class="hidden space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Font Size</label>
+                    <select id="font-size" class="w-full border rounded-lg px-3 py-2 text-sm">
+                        <option value="12">12px</option>
+                        <option value="16">16px</option>
+                        <option value="20" selected>20px</option>
+                        <option value="24">24px</option>
+                        <option value="32">32px</option>
+                        <option value="48">48px</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Opacity</label>
+                    <input type="range" id="opacity" min="0" max="100" value="100" class="w-full">
+                </div>
+            </div>
+
+            <div id="no-selection" class="text-center text-gray-400 mt-20">
+                <i data-lucide="info" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                <p class="text-sm">Select an element to see properties</p>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-6 right-6 bg-gray-900 text-white px-6 py-3 rounded-xl shadow-2xl transform translate-y-24 transition-transform duration-300 flex items-center gap-3">
+        <i data-lucide="check-circle" class="text-green-400 w-5 h-5"></i>
+        <span id="toast-msg">Document saved!</span>
+    </div>
+
+    <script>
+        // --- Initialization ---
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        lucide.createIcons();
+
+        const fileInput = document.getElementById('file-input');
+        const uploadBtn = document.getElementById('upload-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const dropZone = document.getElementById('drop-zone');
+        const pagesContainer = document.getElementById('pdf-pages-container');
+        const viewport = document.getElementById('viewport');
+        const colorPicker = document.getElementById('color-picker');
+        
+        let pdfDoc = null;
+        let pdfBytes = null;
+        let currentTool = 'select';
+        let annotations = []; // Array to store annotations per page
+        let isDrawing = false;
+        let activeAnnotation = null;
+
+        // --- Event Listeners ---
+        uploadBtn.onclick = () => fileInput.click();
+        dropZone.onclick = () => fileInput.click();
+
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file && file.type === 'application/pdf') {
+                loadPDF(file);
+            }
+        };
+
+        // Drag and drop handling
+        dropZone.ondragover = (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        };
+        dropZone.ondragleave = () => dropZone.classList.remove('drag-over');
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'application/pdf') {
+                loadPDF(file);
+            }
+        };
+
+        // Toolbar
+        document.querySelectorAll('.tool-btn').forEach(btn => {
+            btn.onclick = () => {
+                document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentTool = btn.dataset.tool;
+                
+                // Toggle property panels
+                const propPanel = document.getElementById('properties-panel');
+                const textProps = document.getElementById('text-properties');
+                const noSel = document.getElementById('no-selection');
+
+                if (currentTool === 'text') {
+                    propPanel.classList.remove('hidden');
+                    textProps.classList.remove('hidden');
+                    noSel.classList.add('hidden');
+                } else {
+                    noSel.classList.remove('hidden');
+                    textProps.classList.add('hidden');
+                }
+            };
+        });
+
+        // --- Core Functions ---
+
+        async function loadPDF(file) {
+            const reader = new FileReader();
+            reader.onload = async function() {
+                pdfBytes = new Uint8Array(this.result);
+                const loadingTask = pdfjsLib.getDocument({data: pdfBytes});
+                pdfDoc = await loadingTask.promise;
+                
+                showToast("PDF Loaded Successfully");
+                renderAllPages();
+                
+                dropZone.classList.add('hidden');
+                pagesContainer.classList.remove('hidden');
+                downloadBtn.disabled = false;
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        async function renderAllPages() {
+            pagesContainer.innerHTML = '';
+            annotations = [];
+
+            for (let i = 1; i <= pdfDoc.numPages; i++) {
+                const page = await pdfDoc.getPage(i);
+                const viewport = page.getViewport({scale: 1.5});
+                
+                // Create page container
+                const pageWrapper = document.createElement('div');
+                pageWrapper.className = 'canvas-container';
+                pageWrapper.dataset.pageNumber = i;
+                
+                // Background canvas (PDF Content)
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                
+                // Overlay canvas (Annotations)
+                const overlay = document.createElement('canvas');
+                overlay.className = 'annotation-layer';
+                overlay.height = viewport.height;
+                overlay.width = viewport.width;
+                const overlayCtx = overlay.getContext('2d');
+
+                pageWrapper.appendChild(canvas);
+                pageWrapper.appendChild(overlay);
+                pagesContainer.appendChild(pageWrapper);
+
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: viewport
+                };
+                await page.render(renderContext).promise;
+
+                // Initialize empty annotation store for this page
+                annotations.push({
+                    pageIndex: i - 1,
+                    items: [],
+                    ctx: overlayCtx,
+                    canvas: overlay
+                });
+
+                setupInteractions(overlay, i - 1);
+            }
+        }
+
+        function setupInteractions(canvas, pageIdx) {
+            const ctx = canvas.getContext('2d');
+            let currentPath = [];
+
+            canvas.onmousedown = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                if (currentTool === 'draw') {
+                    isDrawing = true;
+                    currentPath = [{x, y}];
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.strokeStyle = colorPicker.value;
+                    ctx.lineWidth = 2;
+                    ctx.lineCap = 'round';
+                } else if (currentTool === 'text') {
+                    const text = prompt("Enter text:");
+                    if (text) {
+                        annotations[pageIdx].items.push({
+                            type: 'text',
+                            content: text,
+                            x: x,
+                            y: y,
+                            color: colorPicker.value,
+                            size: parseInt(document.getElementById('font-size').value) || 20
+                        });
+                        redrawPage(pageIdx);
+                    }
+                } else if (currentTool === 'rect') {
+                    isDrawing = true;
+                    activeAnnotation = {
+                        type: 'rect',
+                        x: x,
+                        y: y,
+                        width: 0,
+                        height: 0,
+                        color: colorPicker.value
+                    };
+                }
+            };
+
+            canvas.onmousemove = (e) => {
+                if (!isDrawing) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                if (currentTool === 'draw') {
+                    ctx.lineTo(x, y);
+                    ctx.stroke();
+                    currentPath.push({x, y});
+                } else if (currentTool === 'rect' && activeAnnotation) {
+                    activeAnnotation.width = x - activeAnnotation.x;
+                    activeAnnotation.height = y - activeAnnotation.y;
+                    redrawPage(pageIdx);
+                    // Draw preview of active rect
+                    ctx.strokeStyle = activeAnnotation.color;
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(activeAnnotation.x, activeAnnotation.y, activeAnnotation.width, activeAnnotation.height);
+                }
+            };
+
+            canvas.onmouseup = () => {
+                if (!isDrawing) return;
+                isDrawing = false;
+
+                if (currentTool === 'draw') {
+                    annotations[pageIdx].items.push({
+                        type: 'path',
+                        points: currentPath,
+                        color: colorPicker.value,
+                        width: 2
+                    });
+                } else if (currentTool === 'rect' && activeAnnotation) {
+                    annotations[pageIdx].items.push({...activeAnnotation});
+                    activeAnnotation = null;
+                }
+                redrawPage(pageIdx);
+            };
+        }
+
+        function redrawPage(pageIdx) {
+            const page = annotations[pageIdx];
+            const ctx = page.ctx;
+            ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
+
+            page.items.forEach(item => {
+                ctx.strokeStyle = item.color;
+                ctx.fillStyle = item.color;
+                ctx.lineWidth = item.width || 2;
+
+                if (item.type === 'path') {
+                    ctx.beginPath();
+                    ctx.moveTo(item.points[0].x, item.points[0].y);
+                    item.points.forEach(p => ctx.lineTo(p.x, p.y));
+                    ctx.stroke();
+                } else if (item.type === 'text') {
+                    ctx.font = `${item.size}px Inter, sans-serif`;
+                    ctx.fillText(item.content, item.x, item.y);
+                } else if (item.type === 'rect') {
+                    ctx.strokeRect(item.x, item.y, item.width, item.height);
+                }
+            });
+        }
+
+        // --- Export Logic ---
+
+        downloadBtn.onclick = async () => {
+            showToast("Generating PDF... Please wait.");
+            
+            try {
+                const { PDFDocument, rgb, StandardFonts } = PDFLib;
+                const existingPdfDoc = await PDFDocument.load(pdfBytes);
+                const helveticaFont = await existingPdfDoc.embedFont(StandardFonts.Helvetica);
+                
+                const pages = existingPdfDoc.getPages();
+
+                for (let i = 0; i < pages.length; i++) {
+                    const page = pages[i];
+                    const { width, height } = page.getSize();
+                    const annots = annotations[i].items;
+                    const canvasWidth = annotations[i].canvas.width;
+                    const canvasHeight = annotations[i].canvas.height;
+
+                    // Scaling factors (Map canvas coordinates to PDF coordinates)
+                    const scaleX = width / canvasWidth;
+                    const scaleY = height / canvasHeight;
+
+                    for (const item of annots) {
+                        const color = hexToRgb(item.color);
+                        const cRgb = rgb(color.r/255, color.g/255, color.b/255);
+
+                        if (item.type === 'text') {
+                            page.drawText(item.content, {
+                                x: item.x * scaleX,
+                                y: height - (item.y * scaleY),
+                                size: item.size * scaleX,
+                                font: helveticaFont,
+                                color: cRgb,
+                            });
+                        } else if (item.type === 'rect') {
+                            page.drawRectangle({
+                                x: item.x * scaleX,
+                                y: height - ((item.y + item.height) * scaleY),
+                                width: item.width * scaleX,
+                                height: item.height * scaleY,
+                                borderColor: cRgb,
+                                borderWidth: 2,
+                            });
+                        } else if (item.type === 'path') {
+                            // Simplify path into lines
+                            for (let p = 1; p < item.points.length; p++) {
+                                page.drawLine({
+                                    start: { x: item.points[p-1].x * scaleX, y: height - (item.points[p-1].y * scaleY) },
+                                    end: { x: item.points[p].x * scaleX, y: height - (item.points[p].y * scaleY) },
+                                    thickness: 2 * scaleX,
+                                    color: cRgb,
+                                });
+                            }
+                        }
+                    }
+                }
+
+                const modifiedPdfBytes = await existingPdfDoc.save();
+                download(modifiedPdfBytes, "edited_document.pdf", "application/pdf");
+                showToast("PDF Exported Successfully!");
+            } catch (err) {
+                console.error(err);
+                showToast("Error exporting PDF");
+            }
+        };
+
+        // Utility to handle downloading files
+        function download(data, filename, type) {
+            const file = new Blob([data], {type: type});
+            const a = document.createElement("a");
+            const url = URL.createObjectURL(file);
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);  
+            }, 0); 
+        }
+
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 0, g: 0, b: 0 };
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').textContent = msg;
+            toast.classList.remove('translate-y-24');
+            setTimeout(() => {
+                toast.classList.add('translate-y-24');
+            }, 3000);
+        }
+
+        document.getElementById('clear-page').onclick = () => {
+            // Find current visible page
+            const visiblePage = Array.from(document.querySelectorAll('.canvas-container')).find(container => {
+                const rect = container.getBoundingClientRect();
+                return rect.top >= 0 && rect.top <= window.innerHeight;
+            });
+
+            if (visiblePage) {
+                const idx = parseInt(visiblePage.dataset.pageNumber) - 1;
+                annotations[idx].items = [];
+                redrawPage(idx);
+                showToast(`Cleared Page ${idx + 1}`);
+            }
+        };
+
     </script>
 </body>
 </html>
-
